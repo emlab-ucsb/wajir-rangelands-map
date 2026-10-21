@@ -54,3 +54,7 @@ To check changes before publishing, open `index.html` directly in a browser. The
 - Typeface: Literata via Google Fonts (SIL Open Font License)
 
 The basemap and boundary credits appear in the map's attribution corner, which should stay visible.
+
+## Acknowledgment
+
+This code was developed with the help of Claude (Anthropic). Any errors are my own. ([Sarah Erickson](https://github.com/sarahmariee))
