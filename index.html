@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wajir County, Kenya: scrolling map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root {
+    /* emLab color system (primary palette) */
+    --ink: #1f2d3a;          /* body text (neutral dark) */
+    --heading: #044E95;      /* emLab dark blue */
+    --panel: #ffffff;        /* text card background */
+    --rule: #9CBEBE;         /* card edge (emLab secondary sea glass) */
+    --region: #044E95;       /* Wajir fill + outline (emLab dark blue) */
+    --route: #63A644;        /* lines and points (emLab green) */
+    --active: #FFA509;       /* active card marker (emLab orange) */
+    --hotspot: #FFA509;      /* migration destination (emLab orange) */
+    --font: "Literata", Georgia, "Times New Roman", serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font-family: var(--font); color: var(--ink); background: #eef3f5; }
+
+  #map { position: fixed; inset: 0; z-index: 0; }
+
+  #story { position: relative; z-index: 1; pointer-events: none; }
+  .step { min-height: 100vh; display: flex; align-items: center; padding: 0 5vw; }
+  .step:last-child { min-height: 120vh; }
+  .card {
+    pointer-events: auto;
+    max-width: 25rem;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--rule);
+    padding: 1.25rem 1.5rem;
+    line-height: 1.6;
+    font-size: 1.05rem;
+    opacity: .55;
+    transition: opacity .4s ease, border-color .4s ease;
+  }
+  .step.is-active .card { opacity: 1; border-left-color: var(--active); }
+  .card h2 { font-size: 1.3rem; font-weight: 600; line-height: 1.25; margin: 0 0 .5rem; color: var(--heading); }
+  .card p { margin: 0; }
+
+  @media (max-width: 640px) {
+    .step { align-items: flex-end; padding: 0 1rem 12vh; }
+    .card { max-width: none; font-size: 1rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
+  .maplibregl-ctrl-attrib { font-family: system-ui, sans-serif; }
+
+  /* Landmark icons (Nairobi skyline, wildlife parks) */
+  .landmark { position: relative; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
+  .landmark.on { opacity: 1; }
+  .landmark .badge { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+                     background: #fff; border: 2.5px solid currentColor; box-shadow: 0 1px 3px rgba(4,78,149,.25); }
+  .landmark.city { color: var(--heading); }
+  .landmark.park { color: var(--route); }
+  .landmark.park .badge { width: 34px; height: 38px; border: 0; border-radius: 0; background: none; box-shadow: none;
+                          filter: drop-shadow(0 1px 2px rgba(4,78,149,.25)); }
+  .landmark.park svg { width: 100%; height: 100%; }
+  .landmark svg { width: 70%; height: 70%; fill: currentColor; }
+  .landmark .name { position: absolute; font: 600 12px/1.2 system-ui, sans-serif; color: var(--ink);
+                    background: rgba(255,255,255,.85); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+  .name.left  { right: 100%; top: 50%; transform: translateY(-50%); margin-right: 4px; }
+  .name.right { left: 100%; top: 50%; transform: translateY(-50%); margin-left: 4px; }
+  .name.below { top: 100%; left: 50%; transform: translateX(-50%); margin-top: 3px; }
+  .landmark .name { text-align: center; }
+  .name.left { text-align: right; }
+  .name.right { text-align: left; }
+  .name .kind { display: block; font-weight: 400; font-size: 11px; }
+  @media (prefers-reduced-motion: reduce) { .landmark { transition: none; } }
+</style>
+</head>
+<body>
+<div id="map" role="img" aria-label="Map of Kenya that zooms to Wajir County as you scroll"></div>
+<div id="story"></div>
+
+<script>
+/* =====================================================================
+   EDIT THIS SECTION
+   STEPS: one entry per scroll section. "show" lists which map layers
+   appear in that step: "region" (Wajir County), "flight" (Nairobi to
+   Wajir), "migration" (animated route, Mozambique tint and hotspot), "places" (Wajir dot), "landmarks" (skyline and park badges), "mask" (grays out countries outside Kenya).
+   ===================================================================== */
+const STEPS = [
+  { title: "Kenya’s northeastern rangelands",
+    text: "Far from the national parks and the skyline of Nairobi, much of northeastern Kenya is dry and flat, dotted with small acacia trees.",
+    center: [35.0, 0.0], zoom: 5.2, show: ["places", "landmarks", "mask"] },
+  { title: "Wajir County",
+    text: "Here lies Wajir County, a vast stretch of rangeland roughly the size of Croatia, or slightly larger than San Bernardino County, the biggest county in the contiguous US. Its economy runs on livestock, raised largely by nomadic pastoralists who move their herds with the seasons.",
+    center: [39.95, 1.95], zoom: 6.2, show: ["region", "mask"] },
+  { title: "Herds on the move",
+    text: "As settlements and fenced plots break up traditional migration routes, some herds travel much farther for pasture, with reports of herds reaching as far south as Mozambique, roughly 2,000 miles away.",
+    center: [38.5, -6.5], zoom: 3.6, show: ["region", "migration"] }
+];
+
+// Icons for the opening scene. "kind" is "city" (skyline) or "park" (shield badge).
+// Parks chosen for their giraffe populations.
+const LANDMARKS = [
+  // label: where the name sits ("left", "right", "below", or "none" when the basemap already names it)
+  // designation: the second line of the label (use each site's official status)
+  { name: "Nairobi", kind: "city", coord: [36.817, -1.286], label: "none" },
+  { name: "Maasai Mara", designation: "National Reserve", kind: "park", coord: [35.15, -1.45], label: "below" },
+  { name: "Amboseli", designation: "National Park", kind: "park", coord: [37.25, -2.65], label: "below" },
+  { name: "Samburu", designation: "National Reserve", kind: "park", coord: [37.53, 0.6], label: "right" }
+];
+
+const PLACES = [
+  { name: "Nairobi", coord: [36.817, -1.286] },
+  { name: "Wajir", coord: [40.059, 1.747] }
+];
+const MIGRATION_END = [37.6, -13.5]; // northern Mozambique, illustrative only
+const MIGRATION_BEND = [35.4, -5.0];  // pulls the route inland so it reads as an overland journey
+/* ===================================================================== */
+
+const OUTSIDE_KENYA = {"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-180.0,85.0],[-180.0,-85.0],[180.0,-85.0],[180.0,85.0],[-180.0,85.0]],[[35.195,5.277],[35.292,5.431],[35.56,5.423],[35.618,5.381],[35.717,5.391],[35.863,5.32],[35.828,5.242],[35.862,5.157],[35.812,5.096],[35.812,4.782],[35.949,4.629],[35.944,4.548],[36.051,4.456],[36.843,4.45],[37.032,4.386],[37.99,3.729],[38.128,3.601],[38.448,3.598],[38.534,3.649],[38.576,3.601],[38.665,3.587],[38.682,3.62],[38.714,3.566],[38.904,3.506],[39.088,3.541],[39.193,3.48],[39.553,3.466],[39.768,3.658],[39.868,3.867],[40.19,4.045],[40.762,4.283],[40.848,4.249],[40.906,4.158],[41.0,4.112],[41.172,3.943],[41.513,3.955],[41.55,3.986],[41.676,3.96],[41.719,3.995],[41.835,3.945],[41.906,3.976],[41.328,3.154],[40.993,2.825],[40.992,-0.829],[41.562,-1.597],[41.562,-1.658],[41.277,-1.982],[41.275,-1.963],[41.282,-1.954],[41.28,-1.938],[41.236,-1.949],[41.252,-1.908],[41.238,-1.918],[41.236,-1.9],[41.219,-1.91],[41.226,-1.887],[41.119,-1.972],[41.066,-1.979],[41.011,-2.047],[40.983,-1.946],[41.048,-1.89],[41.041,-1.866],[40.961,-1.943],[40.946,-2.076],[40.937,-2.009],[40.879,-1.989],[40.873,-1.95],[40.864,-1.971],[40.841,-1.93],[40.836,-1.94],[40.842,-1.96],[40.774,-1.934],[40.769,-1.943],[40.814,-1.975],[40.872,-2.0],[40.829,-2.018],[40.903,-2.011],[40.9,-2.046],[40.875,-2.044],[40.894,-2.061],[40.851,-2.07],[40.912,-2.09],[40.926,-2.221],[40.882,-2.186],[40.877,-2.233],[40.795,-2.232],[40.781,-2.26],[40.695,-2.205],[40.726,-2.24],[40.705,-2.261],[40.756,-2.275],[40.758,-2.307],[40.725,-2.271],[40.691,-2.289],[40.704,-2.309],[40.759,-2.317],[40.781,-2.361],[40.759,-2.395],[40.772,-2.394],[40.795,-2.34],[40.822,-2.389],[40.607,-2.557],[40.489,-2.491],[40.444,-2.532],[40.516,-2.528],[40.267,-2.643],[40.34,-2.584],[40.291,-2.613],[40.27,-2.63],[40.196,-2.733],[40.182,-2.681],[40.18,-2.733],[40.174,-2.737],[40.176,-2.714],[40.157,-2.729],[40.155,-2.79],[40.184,-2.83],[40.144,-2.892],[40.169,-2.889],[40.148,-2.909],[40.145,-3.044],[40.185,-2.992],[40.24,-2.99],[40.174,-3.036],[40.16,-3.129],[40.125,-3.147],[40.12,-3.287],[39.974,-3.386],[39.997,-3.364],[39.996,-3.312],[39.938,-3.347],[39.935,-3.387],[39.968,-3.401],[39.87,-3.628],[39.771,-3.588],[39.78,-3.61],[39.809,-3.62],[39.796,-3.625],[39.779,-3.621],[39.795,-3.644],[39.867,-3.651],[39.839,-3.674],[39.87,-3.693],[39.83,-3.818],[39.764,-3.95],[39.713,-3.946],[39.718,-3.893],[39.691,-3.907],[39.707,-3.946],[39.687,-3.95],[39.764,-3.958],[39.699,-4.059],[39.661,-4.019],[39.672,-3.987],[39.659,-3.945],[39.658,-3.987],[39.605,-3.953],[39.597,-3.984],[39.635,-3.989],[39.638,-4.041],[39.584,-4.043],[39.563,-4.015],[39.577,-4.12],[39.591,-4.116],[39.592,-4.063],[39.637,-4.049],[39.674,-4.091],[39.625,-4.145],[39.537,-4.436],[39.508,-4.399],[39.462,-4.53],[39.443,-4.503],[39.41,-4.548],[39.375,-4.54],[39.402,-4.643],[39.31,-4.631],[39.336,-4.567],[39.313,-4.552],[39.279,-4.584],[39.244,-4.567],[39.269,-4.6],[39.226,-4.616],[39.211,-4.647],[39.219,-4.677],[39.194,-4.667],[37.784,-3.673],[37.744,-3.543],[37.669,-3.506],[37.605,-3.518],[37.622,-3.463],[37.585,-3.438],[37.711,-3.308],[37.671,-3.059],[37.568,-2.987],[34.094,-1.03],[34.039,-1.046],[34.017,-1.002],[33.935,-1.001],[33.92,-0.562],[33.982,-0.129],[33.914,0.111],[34.1,0.35],[34.09,0.456],[34.121,0.48],[34.138,0.586],[34.276,0.642],[34.313,0.764],[34.412,0.811],[34.446,0.864],[34.528,1.122],[34.577,1.1],[34.58,1.15],[34.671,1.208],[34.794,1.219],[34.818,1.248],[34.831,1.303],[34.789,1.416],[34.858,1.453],[34.864,1.527],[34.942,1.576],[34.988,1.665],[35.026,1.924],[34.984,1.981],[34.975,2.163],[34.879,2.398],[34.953,2.472],[34.893,2.593],[34.852,2.584],[34.775,2.698],[34.767,2.823],[34.702,2.878],[34.653,2.868],[34.599,2.926],[34.575,3.099],[34.455,3.183],[34.389,3.492],[34.451,3.519],[34.463,3.67],[34.37,3.735],[34.324,3.727],[34.303,3.686],[34.246,3.784],[34.172,3.768],[34.189,3.795],[34.153,3.807],[34.225,3.831],[34.216,3.882],[34.088,3.862],[34.134,3.962],[34.062,4.009],[34.093,4.069],[34.049,4.178],[33.993,4.222],[34.366,4.577],[35.195,5.277]]]}}; // world minus Kenya (geoBoundaries, public domain), for graying out neighbors
+const MOZAMBIQUE = {"type":"Feature","properties":{"name":"Mozambique"},"geometry":{"type":"Polygon","coordinates":[[[40.46,-10.48],[40.23,-10.6],[40.0,-10.81],[39.52,-10.98],[39.25,-11.18],[39.12,-11.14],[38.88,-11.17],[38.75,-11.27],[38.64,-11.29],[38.49,-11.42],[38.22,-11.27],[37.91,-11.27],[37.83,-11.31],[37.75,-11.55],[37.45,-11.64],[37.4,-11.69],[37.03,-11.59],[36.87,-11.6],[36.81,-11.55],[36.77,-11.65],[36.63,-11.74],[36.57,-11.7],[36.51,-11.76],[36.48,-11.68],[36.22,-11.71],[36.18,-11.55],[36.15,-11.57],[36.12,-11.51],[36.06,-11.54],[35.94,-11.42],[35.84,-11.41],[35.64,-11.56],[35.52,-11.58],[34.64,-11.57],[34.59,-11.86],[34.38,-12.17],[34.46,-12.57],[34.54,-12.74],[34.56,-13.35],[34.61,-13.48],[34.87,-13.48],[35.09,-13.7],[35.87,-14.68],[35.87,-14.9],[35.92,-14.9],[35.79,-15.17],[35.85,-15.42],[35.82,-16.03],[35.52,-16.17],[35.49,-16.12],[35.41,-16.12],[35.3,-16.23],[35.26,-16.47],[35.14,-16.56],[35.29,-16.71],[35.31,-16.83],[35.26,-16.94],[35.3,-16.98],[35.31,-17.12],[35.08,-17.11],[35.11,-17.09],[35.05,-17.01],[35.17,-16.94],[35.16,-16.84],[35.04,-16.83],[34.98,-16.75],[34.92,-16.75],[34.75,-16.51],[34.68,-16.5],[34.68,-16.44],[34.59,-16.42],[34.57,-16.31],[34.43,-16.26],[34.4,-16.19],[34.43,-16.04],[34.26,-15.92],[34.27,-15.8],[34.46,-15.61],[34.44,-15.42],[34.51,-15.41],[34.6,-15.27],[34.57,-15.08],[34.62,-15.0],[34.52,-14.69],[34.54,-14.61],[34.39,-14.4],[34.08,-14.46],[34.09,-14.49],[33.94,-14.47],[33.8,-14.55],[33.72,-14.5],[33.72,-14.58],[33.67,-14.62],[33.61,-14.49],[33.47,-14.4],[33.39,-14.22],[33.34,-14.22],[33.3,-14.03],[33.24,-14.0],[31.69,-14.5],[31.48,-14.62],[30.86,-14.76],[30.22,-15.0],[30.28,-15.25],[30.38,-15.37],[30.4,-15.48],[30.36,-15.55],[30.43,-15.63],[30.42,-16.0],[30.92,-16.0],[30.99,-16.06],[31.06,-16.0],[31.28,-16.01],[31.43,-16.16],[31.77,-16.24],[31.89,-16.34],[31.91,-16.41],[32.34,-16.45],[32.71,-16.6],[32.71,-16.69],[32.98,-16.71],[32.91,-16.89],[32.84,-16.92],[32.99,-17.18],[33.0,-17.31],[33.05,-17.34],[32.97,-17.48],[32.98,-17.56],[33.05,-17.6],[33.02,-17.8],[32.96,-17.81],[32.98,-17.92],[32.94,-18.03],[33.07,-18.35],[33.02,-18.5],[32.89,-18.51],[32.95,-18.69],[32.93,-18.77],[32.71,-18.83],[32.74,-18.93],[32.7,-18.94],[32.71,-19.03],[32.83,-19.02],[32.88,-19.1],[32.78,-19.46],[32.85,-19.48],[32.83,-19.67],[32.98,-19.65],[32.96,-19.72],[33.06,-19.78],[33.03,-20.03],[32.95,-20.04],[32.92,-20.13],[32.87,-20.12],[32.86,-20.29],[32.67,-20.56],[32.49,-20.62],[32.52,-20.91],[32.37,-21.14],[32.48,-21.33],[32.41,-21.32],[31.31,-22.42],[31.56,-23.2],[31.56,-23.48],[31.69,-23.63],[31.77,-23.88],[31.88,-23.95],[31.91,-24.18],[31.99,-24.3],[32.03,-25.13],[31.98,-25.47],[32.01,-25.65],[31.93,-25.84],[32.01,-26.0],[32.09,-26.01],[32.08,-26.41],[32.13,-26.53],[32.16,-26.86],[32.89,-26.86],[32.96,-26.08],[32.87,-26.2],[32.9,-26.34],[32.87,-26.28],[32.68,-26.19],[32.55,-25.97],[32.5,-25.99],[32.46,-26.07],[32.49,-26.1],[32.43,-26.14],[32.46,-26.11],[32.4,-26.04],[32.52,-25.94],[32.59,-25.98],[32.67,-25.89],[32.75,-25.87],[32.75,-25.74],[32.86,-25.56],[33.52,-25.2],[35.06,-24.64],[35.2,-24.53],[35.5,-24.11],[35.54,-23.79],[35.48,-23.78],[35.48,-23.79],[35.5,-23.79],[35.5,-23.79],[35.5,-23.79],[35.5,-23.8],[35.51,-23.8],[35.51,-23.8],[35.47,-23.88],[35.39,-23.83],[35.39,-23.92],[35.33,-24.01],[35.32,-23.95],[35.38,-23.7],[35.34,-23.69],[35.4,-23.68],[35.41,-23.73],[35.49,-23.18],[35.6,-22.94],[35.55,-22.9],[35.59,-22.94],[35.54,-22.94],[35.51,-22.79],[35.55,-22.14],[35.52,-22.24],[35.48,-22.1],[35.4,-22.22],[35.35,-22.2],[35.27,-21.64],[35.13,-21.41],[35.11,-21.26],[35.08,-21.31],[35.05,-21.25],[35.1,-21.24],[35.1,-21.22],[35.1,-21.2],[35.1,-21.19],[35.08,-21.21],[35.02,-21.11],[35.09,-21.09],[35.13,-20.93],[35.05,-20.9],[35.0,-20.71],[34.93,-20.63],[34.85,-20.64],[34.74,-20.51],[34.68,-20.52],[34.72,-20.47],[34.66,-20.41],[34.71,-20.38],[34.74,-20.23],[34.71,-20.16],[34.78,-20.14],[34.74,-19.88],[34.77,-19.84],[34.68,-19.74],[34.73,-19.73],[34.81,-19.77],[34.84,-19.85],[34.97,-19.81],[35.34,-19.52],[35.78,-19.05],[35.96,-18.94],[36.32,-18.86],[36.39,-18.78],[36.39,-18.73],[36.34,-18.77],[36.34,-18.74],[36.43,-18.62],[36.49,-18.59],[36.47,-18.56],[36.88,-18.19],[37.11,-17.86],[37.3,-17.69],[38.44,-17.16],[39.07,-17.01],[39.2,-16.83],[39.9,-16.42],[39.95,-16.3],[39.81,-16.28],[40.03,-16.19],[40.17,-15.92],[40.57,-15.49],[40.68,-15.26],[40.62,-15.15],[40.56,-15.2],[40.52,-15.13],[40.71,-15.08],[40.64,-14.97],[40.77,-15.01],[40.74,-14.94],[40.65,-14.91],[40.83,-14.84],[40.84,-14.68],[40.8,-14.63],[40.83,-14.53],[40.76,-14.56],[40.83,-14.52],[40.8,-14.41],[40.68,-14.46],[40.67,-14.56],[40.63,-14.59],[40.62,-14.59],[40.66,-14.48],[40.62,-14.46],[40.67,-14.47],[40.62,-14.33],[40.68,-14.38],[40.74,-14.28],[40.7,-14.19],[40.62,-14.22],[40.6,-14.28],[40.6,-14.22],[40.56,-14.24],[40.53,-14.17],[40.61,-14.14],[40.59,-14.1],[40.64,-14.03],[40.58,-14.0],[40.62,-13.98],[40.54,-13.64],[40.59,-13.58],[40.6,-13.55],[40.52,-13.51],[40.58,-13.36],[40.55,-13.1],[40.59,-12.97],[40.5,-12.95],[40.51,-13.03],[40.44,-13.03],[40.4,-12.95],[40.47,-12.88],[40.51,-12.93],[40.63,-12.75],[40.57,-12.69],[40.58,-12.65],[40.62,-12.66],[40.55,-12.59],[40.57,-12.53],[40.47,-12.5],[40.52,-12.4],[40.45,-12.41],[40.51,-12.33],[40.49,-12.14],[40.55,-12.0],[40.5,-11.96],[40.51,-11.85],[40.44,-11.73],[40.46,-11.61],[40.42,-11.56],[40.48,-11.41],[40.36,-11.33],[40.51,-11.2],[40.49,-11.15],[40.56,-11.03],[40.48,-11.0],[40.49,-10.94],[40.62,-10.83],[40.49,-10.79],[40.48,-10.75],[40.64,-10.69],[40.57,-10.66],[40.53,-10.49],[40.46,-10.48]]]}}; // geoBoundaries / OpenStreetMap contributors (ODbL 1.0), simplified
+const REGION = {"type":"Feature","properties":{"name":"Wajir County"},"geometry":{"type":"Polygon","coordinates":[[[38.963,2.097],[38.98,2.078],[38.981,2.074],[38.985,2.07],[38.984,2.053],[38.991,2.045],[38.993,2.04],[38.99,2.028],[38.994,2.01],[39.004,2.001],[39.02,1.977],[39.027,1.974],[39.035,1.967],[39.038,1.958],[39.049,1.945],[39.054,1.934],[39.063,1.928],[39.068,1.915],[39.076,1.908],[39.084,1.899],[39.089,1.897],[39.095,1.89],[39.098,1.889],[39.102,1.89],[39.106,1.883],[39.112,1.878],[39.123,1.874],[39.126,1.869],[39.131,1.866],[39.139,1.848],[39.143,1.846],[39.145,1.842],[39.146,1.835],[39.144,1.83],[39.15,1.824],[39.154,1.813],[39.162,1.805],[39.166,1.795],[39.17,1.791],[39.18,1.762],[39.18,1.753],[39.186,1.742],[39.191,1.737],[39.194,1.729],[39.198,1.726],[39.198,1.722],[39.214,1.697],[39.218,1.698],[39.222,1.696],[39.23,1.695],[39.236,1.689],[39.243,1.689],[39.254,1.683],[39.266,1.674],[39.275,1.673],[39.285,1.668],[39.287,1.662],[39.3,1.655],[39.308,1.655],[39.313,1.643],[39.319,1.644],[39.322,1.643],[39.326,1.635],[39.334,1.634],[39.337,1.631],[39.34,1.626],[39.345,1.626],[39.348,1.618],[39.351,1.618],[39.354,1.613],[39.358,1.61],[39.361,1.604],[39.366,1.598],[39.373,1.585],[39.379,1.579],[39.386,1.574],[39.387,1.566],[39.39,1.564],[39.395,1.565],[39.4,1.553],[39.407,1.55],[39.411,1.551],[39.416,1.55],[39.419,1.547],[39.422,1.546],[39.426,1.54],[39.439,1.529],[39.447,1.527],[39.274,1.468],[39.398,1.146],[39.462,0.997],[39.461,0.995],[39.466,0.987],[39.48,0.98],[39.492,0.962],[39.498,0.934],[39.514,0.9],[39.532,0.857],[39.546,0.816],[39.553,0.785],[39.561,0.768],[39.564,0.757],[39.567,0.754],[39.569,0.749],[39.575,0.742],[39.586,0.722],[39.597,0.713],[39.6,0.704],[39.607,0.695],[39.611,0.692],[39.614,0.685],[39.625,0.677],[39.628,0.67],[39.635,0.668],[39.646,0.658],[39.654,0.638],[39.654,0.633],[39.662,0.622],[39.665,0.615],[39.674,0.605],[39.677,0.598],[39.686,0.588],[39.689,0.58],[39.696,0.575],[39.702,0.566],[39.712,0.558],[39.717,0.551],[39.718,0.546],[39.721,0.547],[39.724,0.544],[39.729,0.535],[39.732,0.532],[39.733,0.526],[39.737,0.523],[39.741,0.524],[39.747,0.518],[39.755,0.515],[39.759,0.512],[39.762,0.512],[39.765,0.507],[39.767,0.504],[39.77,0.503],[39.774,0.499],[39.775,0.495],[39.777,0.495],[39.784,0.49],[39.793,0.488],[39.8,0.483],[39.811,0.483],[39.821,0.482],[39.827,0.478],[39.836,0.48],[39.841,0.477],[39.85,0.477],[39.854,0.474],[39.857,0.469],[39.865,0.466],[39.87,0.46],[39.875,0.458],[39.88,0.459],[39.888,0.463],[39.896,0.461],[39.905,0.462],[39.944,0.43],[39.979,0.41],[39.993,0.404],[40.013,0.399],[40.048,0.396],[40.06,0.393],[40.096,0.367],[40.128,0.343],[40.161,0.326],[40.178,0.31],[40.211,0.272],[40.233,0.253],[40.259,0.237],[40.283,0.228],[40.303,0.218],[40.331,0.199],[40.358,0.199],[40.375,0.197],[40.383,0.194],[40.395,0.186],[40.402,0.184],[40.407,0.184],[40.419,0.189],[40.426,0.19],[40.448,0.186],[40.474,0.186],[40.483,0.189],[40.495,0.198],[40.499,0.197],[40.504,0.192],[40.507,0.193],[40.512,0.202],[40.514,0.208],[40.521,0.213],[40.525,0.221],[40.533,0.226],[40.541,0.227],[40.565,0.216],[40.579,0.217],[40.586,0.215],[40.595,0.226],[40.599,0.227],[40.604,0.225],[40.609,0.231],[40.612,0.233],[40.619,0.231],[40.63,0.233],[40.648,0.232],[40.682,0.258],[40.683,0.261],[40.684,0.271],[40.694,0.278],[40.704,0.295],[40.71,0.313],[40.716,0.32],[40.735,0.326],[40.752,0.344],[40.773,0.354],[40.819,0.366],[40.843,0.371],[40.863,0.379],[40.886,0.392],[40.919,0.424],[40.933,0.432],[40.946,0.437],[40.961,0.448],[40.977,0.453],[40.992,0.464],[40.992,0.952],[40.992,1.443],[40.992,1.71],[40.99,1.947],[40.992,2.179],[40.964,2.176],[40.946,2.177],[40.916,2.191],[40.892,2.21],[40.876,2.225],[40.862,2.243],[40.842,2.264],[40.839,2.275],[40.83,2.277],[40.821,2.276],[40.813,2.278],[40.799,2.286],[40.78,2.305],[40.756,2.315],[40.74,2.314],[40.733,2.318],[40.72,2.328],[40.717,2.333],[40.716,2.339],[40.713,2.341],[40.71,2.349],[40.701,2.354],[40.7,2.358],[40.693,2.366],[40.686,2.369],[40.682,2.37],[40.677,2.375],[40.676,2.384],[40.668,2.391],[40.666,2.396],[40.668,2.406],[40.665,2.413],[40.665,2.423],[40.661,2.429],[40.654,2.433],[40.641,2.436],[40.64,2.437],[40.64,2.441],[40.634,2.442],[40.631,2.449],[40.616,2.462],[40.607,2.476],[40.604,2.484],[40.605,2.488],[40.604,2.492],[40.592,2.501],[40.592,2.505],[40.597,2.509],[40.597,2.512],[40.582,2.528],[40.58,2.535],[40.581,2.55],[40.57,2.564],[40.567,2.565],[40.559,2.579],[40.562,2.586],[40.554,2.593],[40.553,2.599],[40.551,2.603],[40.552,2.61],[40.545,2.627],[40.546,2.632],[40.543,2.635],[40.542,2.64],[40.538,2.643],[40.537,2.651],[40.532,2.66],[40.528,2.664],[40.528,2.671],[40.525,2.678],[40.521,2.696],[40.518,2.7],[40.514,2.702],[40.503,2.716],[40.501,2.724],[40.506,2.725],[40.509,2.728],[40.512,2.732],[40.514,2.738],[40.52,2.74],[40.521,2.741],[40.519,2.745],[40.52,2.751],[40.519,2.761],[40.521,2.764],[40.519,2.771],[40.522,2.776],[40.52,2.778],[40.515,2.778],[40.511,2.784],[40.508,2.783],[40.505,2.784],[40.504,2.787],[40.505,2.795],[40.496,2.797],[40.493,2.8],[40.494,2.804],[40.503,2.809],[40.504,2.811],[40.503,2.814],[40.494,2.818],[40.495,2.819],[40.497,2.82],[40.497,2.821],[40.495,2.821],[40.496,2.827],[40.498,2.834],[40.494,2.838],[40.494,2.845],[40.496,2.851],[40.493,2.855],[40.495,2.857],[40.492,2.864],[40.493,2.868],[40.27,2.971],[40.183,3.073],[40.044,3.224],[40.035,3.23],[39.787,3.333],[39.775,3.668],[39.768,3.658],[39.766,3.661],[39.609,3.501],[39.553,3.466],[39.548,3.471],[39.54,3.473],[39.532,3.468],[39.53,3.469],[39.525,3.467],[39.523,3.469],[39.501,3.47],[39.5,3.465],[39.493,3.467],[39.486,3.46],[39.476,3.46],[39.473,3.462],[39.471,3.459],[39.466,3.46],[39.457,3.456],[39.446,3.461],[39.442,3.456],[39.438,3.456],[39.437,3.461],[39.431,3.458],[39.429,3.466],[39.422,3.461],[39.418,3.461],[39.413,3.467],[39.408,3.464],[39.407,3.466],[39.403,3.463],[39.376,3.468],[39.336,3.466],[39.318,3.472],[39.305,3.456],[39.3,3.441],[39.302,3.427],[39.314,3.407],[39.328,3.289],[39.33,3.285],[39.338,3.277],[39.342,3.255],[39.347,3.07],[39.324,3.053],[39.289,3.035],[39.282,3.027],[39.249,2.996],[39.248,2.989],[39.202,2.957],[39.153,2.955],[39.147,2.953],[39.138,2.939],[39.134,2.936],[39.127,2.935],[39.124,2.931],[39.117,2.914],[39.112,2.883],[39.065,2.882],[39.066,2.738],[39.058,2.734],[39.052,2.726],[39.048,2.712],[39.048,2.704],[39.046,2.7],[39.037,2.692],[39.036,2.69],[39.036,2.687],[39.041,2.682],[39.043,2.676],[38.982,2.571],[38.977,2.567],[38.968,2.563],[38.889,2.543],[38.892,2.535],[38.894,2.513],[38.901,2.488],[38.902,2.478],[38.914,2.45],[38.914,2.441],[38.928,2.413],[38.931,2.395],[38.931,2.381],[38.935,2.373],[38.934,2.36],[38.931,2.346],[38.936,2.316],[38.926,2.284],[38.929,2.275],[38.929,2.262],[38.934,2.244],[38.938,2.215],[38.937,2.197],[38.938,2.177],[38.936,2.161],[38.954,2.106],[38.963,2.097]]]}}; // Wajir County boundary, geoBoundaries (public domain)
+
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const css = getComputedStyle(document.documentElement);
+const REGION_COLOR = css.getPropertyValue("--region").trim();
+const ROUTE_COLOR = css.getPropertyValue("--route").trim();
+const INK_COLOR = css.getPropertyValue("--ink").trim();
+const HOTSPOT_COLOR = css.getPropertyValue("--hotspot").trim();
+
+const story = document.getElementById("story");
+STEPS.forEach((s, i) => {
+  const section = document.createElement("section");
+  section.className = "step";
+  section.dataset.index = i;
+  section.innerHTML = `<div class="card"><h2></h2><p></p></div>`;
+  section.querySelector("h2").textContent = s.title;
+  section.querySelector("p").textContent = s.text;
+  story.appendChild(section);
+});
+
+const map = new maplibregl.Map({
+  container: "map",
+  style: "https://tiles.openfreemap.org/styles/positron",
+  center: STEPS[0].center,
+  zoom: STEPS[0].zoom,
+  interactive: false,
+  attributionControl: { compact: true, customAttribution: "Boundary: geoBoundaries" }
+});
+
+const line = (a, b) => ({ type: "Feature", geometry: { type: "LineString", coordinates: [a, b] } });
+const FADE = { duration: 600 };
+
+// Smooth curved route from a to b, bending toward ctrl
+function curve(a, b, ctrl, n = 80) {
+  const pts = [];
+  for (let k = 0; k <= n; k++) {
+    const u = k / n, v = 1 - u;
+    pts.push([v * v * a[0] + 2 * v * u * ctrl[0] + u * u * b[0],
+              v * v * a[1] + 2 * v * u * ctrl[1] + u * u * b[1]]);
+  }
+  return pts;
+}
+const MIGRATION_PATH = curve(PLACES[1].coord, MIGRATION_END, MIGRATION_BEND);
+const pointsAt = fracs => ({ type: "FeatureCollection", features: fracs.map(f => ({
+  type: "Feature", properties: { f },
+  geometry: { type: "Point", coordinates: MIGRATION_PATH[Math.round(f * (MIGRATION_PATH.length - 1))] } })) });
+
+// Layer ids grouped by the name used in each step's "show" list
+const GROUPS = {
+  region: [["region-fill", "fill-opacity", 0.25], ["region-line", "line-opacity", 1]],
+  flight: [["flight", "line-opacity", 1]],
+  mask: [["mask", "fill-opacity", 0.35]],
+  migration: [["migration", "line-opacity", 0.9], ["herd", "circle-opacity", 1], ["herd", "circle-stroke-opacity", 1],
+              ["moz-fill", "fill-opacity", 0.2], ["moz-line", "line-opacity", 0.8],
+              ["hotspot-core", "circle-opacity", 1], ["hotspot-pulse", "circle-stroke-opacity", 0.8]],
+  places: [["places-dot", "circle-opacity", 1], ["places-label", "text-opacity", 1]]
+};
+
+map.on("load", () => {
+  map.addSource("region", { type: "geojson", data: REGION });
+  map.addLayer({ id: "region-fill", type: "fill", source: "region",
+    paint: { "fill-color": REGION_COLOR, "fill-opacity": 0, "fill-opacity-transition": FADE } });
+  map.addLayer({ id: "region-line", type: "line", source: "region",
+    paint: { "line-color": REGION_COLOR, "line-width": 2.5, "line-opacity": 0, "line-opacity-transition": FADE } });
+
+  map.addSource("flight", { type: "geojson", data: line(PLACES[0].coord, PLACES[1].coord) });
+  map.addLayer({ id: "flight", type: "line", source: "flight",
+    paint: { "line-color": ROUTE_COLOR, "line-width": 3, "line-dasharray": [2, 2], "line-opacity": 0, "line-opacity-transition": FADE } });
+
+  // Gray veil over everything outside Kenya (scenes 1 and 2)
+  map.addSource("mask", { type: "geojson", data: OUTSIDE_KENYA });
+  map.addLayer({ id: "mask", type: "fill", source: "mask",
+    paint: { "fill-color": "#8a949b", "fill-opacity": 0, "fill-opacity-transition": { duration: 900 } } }, "region-fill");
+
+  // Destination country, tinted so the cross-border distance reads at a glance
+  map.addSource("moz", { type: "geojson", data: MOZAMBIQUE });
+  map.addLayer({ id: "moz-fill", type: "fill", source: "moz",
+    paint: { "fill-color": HOTSPOT_COLOR, "fill-opacity": 0, "fill-opacity-transition": FADE } }, "region-fill");
+  map.addLayer({ id: "moz-line", type: "line", source: "moz",
+    paint: { "line-color": HOTSPOT_COLOR, "line-width": 1.5, "line-opacity": 0, "line-opacity-transition": FADE } }, "region-fill");
+
+  // Route that fades in from Wajir (green) and warms toward Mozambique (orange)
+  map.addSource("migration", { type: "geojson", lineMetrics: true,
+    data: { type: "Feature", geometry: { type: "LineString", coordinates: MIGRATION_PATH } } });
+  map.addLayer({ id: "migration", type: "line", source: "migration",
+    layout: { "line-cap": "round" },
+    paint: { "line-width": 4, "line-opacity": 0, "line-opacity-transition": FADE,
+             "line-gradient": ["interpolate", ["linear"], ["line-progress"],
+               0, "rgba(99,166,68,0.1)", 0.45, ROUTE_COLOR, 1, HOTSPOT_COLOR] } });
+
+  // Moving dots stand in for herds travelling the route
+  map.addSource("herd", { type: "geojson", data: pointsAt([0.1, 0.3, 0.5, 0.7, 0.9]) });
+  map.addLayer({ id: "herd", type: "circle", source: "herd",
+    paint: { "circle-radius": ["interpolate", ["linear"], ["get", "f"], 0, 2.5, 1, 5],
+             "circle-color": ["interpolate", ["linear"], ["get", "f"], 0, ROUTE_COLOR, 1, HOTSPOT_COLOR],
+             "circle-stroke-color": "#fff", "circle-stroke-width": 1.5,
+             "circle-opacity": 0, "circle-stroke-opacity": 0,
+             "circle-opacity-transition": FADE, "circle-stroke-opacity-transition": FADE } });
+
+  // Pulsing hotspot at the destination
+  map.addSource("hotspot", { type: "geojson", data: { type: "Feature", geometry: { type: "Point", coordinates: MIGRATION_END } } });
+  map.addLayer({ id: "hotspot-pulse", type: "circle", source: "hotspot",
+    paint: { "circle-radius": 14, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": HOTSPOT_COLOR,
+             "circle-stroke-width": 2.5, "circle-stroke-opacity": 0 } });
+  map.addLayer({ id: "hotspot-core", type: "circle", source: "hotspot",
+    paint: { "circle-radius": 7, "circle-color": HOTSPOT_COLOR, "circle-stroke-color": "#fff", "circle-stroke-width": 2,
+             "circle-opacity": 0, "circle-opacity-transition": FADE } });
+
+  map.addSource("places", { type: "geojson", data: { type: "FeatureCollection",
+    features: PLACES.map(p => ({ type: "Feature", properties: { name: p.name }, geometry: { type: "Point", coordinates: p.coord } })) } });
+  map.addLayer({ id: "places-dot", type: "circle", source: "places",
+    filter: ["==", ["get", "name"], "Wajir"],
+    paint: { "circle-radius": 6, "circle-color": ROUTE_COLOR, "circle-stroke-color": "#fff", "circle-stroke-width": 1.5,
+             "circle-opacity": 0, "circle-stroke-opacity": 0, "circle-opacity-transition": FADE } });
+
+  map.addLayer({ id: "places-label", type: "symbol", source: "places",
+    filter: ["==", ["get", "name"], "Wajir"], // the basemap already labels Nairobi
+    layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": 14,
+              "text-offset": [0, 1.1], "text-anchor": "top" },
+    paint: { "text-color": INK_COLOR, "text-halo-color": "#fff", "text-halo-width": 1.5,
+             "text-opacity": 0, "text-opacity-transition": FADE } });
+
+  addLandmarks();
+  setupScroll();
+});
+
+const ICONS = {
+  // Skyline: towers of different heights on a ground line
+  city: '<svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="17" width="5" height="11"/><rect x="9" y="9" width="5" height="19"/><rect x="10.5" y="5" width="2" height="4"/><rect x="15" y="13" width="6" height="15"/><rect x="22" y="4" width="4" height="24"/><rect x="23.5" y="1.5" width="1" height="2.5"/><rect x="27" y="15" width="3" height="13"/><rect x="2" y="28" width="28" height="2"/></svg>',
+  // Protected-area badge: shield with a flat-topped acacia
+  park: '<svg viewBox="0 0 32 36" aria-hidden="true"><path d="M16 1.5 L29 5.5 V17 C29 26 23 31.5 16 34.5 C9 31.5 3 26 3 17 V5.5 Z" fill="#fff" stroke="currentColor" stroke-width="2.2"/><path d="M6.5 13.2 Q8.5 9.6 12.8 10.2 Q16 8 19.2 10.2 Q23.5 9.6 25.5 13.2 Q21 15 16 14.4 Q11 15 6.5 13.2 Z"/><path d="M15.1 14 H16.9 L17.4 25.2 H14.6 Z"/><path d="M15.6 19.5 L11 14.2 L12.2 13.8 L16.3 18.4 Z"/><path d="M16.4 18.6 L20.6 14 L21.6 14.6 L16.8 19.9 Z"/><rect x="7.5" y="25" width="17" height="1.8" rx=".9"/></svg>'
+};
+const landmarkEls = [];
+function addLandmarks() {
+  LANDMARKS.forEach(l => {
+    const wrap = document.createElement("div"); // MapLibre positions this outer element
+    const el = document.createElement("div");
+    el.className = `landmark ${l.kind}`;
+    wrap.appendChild(el);
+    el.innerHTML = `<div class="badge">${ICONS[l.kind]}</div>`;
+    if (l.label !== "none") {
+      const name = document.createElement("div");
+      name.className = `name ${l.label}`;
+      name.textContent = l.name;
+      if (l.designation) {
+        const kind = document.createElement("span");
+        kind.className = "kind";
+        kind.textContent = l.designation;
+        name.appendChild(kind);
+      }
+      el.appendChild(name);
+    }
+    // The skyline sits just below Nairobi so the basemap's city label stays readable
+    const opts = l.kind === "city" ? { anchor: "top", offset: [0, 4] } : { anchor: "center" };
+    new maplibregl.Marker({ element: wrap, ...opts }).setLngLat(l.coord).addTo(map);
+    landmarkEls.push(el);
+  });
+}
+
+let current = -1;
+function goTo(i) {
+  if (i === current) return;
+  current = i;
+  const s = STEPS[i];
+  document.querySelectorAll(".step").forEach(el =>
+    el.classList.toggle("is-active", Number(el.dataset.index) === i));
+  for (const [group, layers] of Object.entries(GROUPS)) {
+    const on = s.show.includes(group);
+    layers.forEach(([id, prop, value]) => map.setPaintProperty(id, prop, on ? value : 0));
+    if (group === "places") map.setPaintProperty("places-dot", "circle-stroke-opacity", on ? 1 : 0);
+  }
+  landmarkEls.forEach(el => el.classList.toggle("on", s.show.includes("landmarks")));
+  s.show.includes("migration") ? startMigration() : stopMigration();
+  if (reduceMotion) map.jumpTo({ center: s.center, zoom: s.zoom });
+  else map.flyTo({ center: s.center, zoom: s.zoom, speed: 0.8, curve: 1.4, essential: true });
+}
+
+// Animation for the migration step; skipped for readers who prefer reduced motion
+let raf = null;
+function startMigration() {
+  if (reduceMotion || raf) return;
+  const t0 = performance.now();
+  const tick = now => {
+    const t = (now - t0) / 1000;
+    const shift = (t * 0.08) % 0.2;                       // dots march toward Mozambique
+    map.getSource("herd").setData(pointsAt([0, 0.2, 0.4, 0.6, 0.8].map(f => (f + shift + 0.02) % 1)));
+    const pulse = (t % 1.8) / 1.8;                        // ring expands and fades
+    map.setPaintProperty("hotspot-pulse", "circle-radius", 8 + pulse * 26);
+    map.setPaintProperty("hotspot-pulse", "circle-stroke-opacity", 0.9 * (1 - pulse));
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+}
+function stopMigration() {
+  if (raf) cancelAnimationFrame(raf);
+  raf = null;
+  if (map.getLayer("hotspot-pulse")) map.setPaintProperty("hotspot-pulse", "circle-stroke-opacity", 0);
+}
+
+function setupScroll() {
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) goTo(Number(e.target.dataset.index)); });
+  }, { rootMargin: "-50% 0px -50% 0px" });
+  document.querySelectorAll(".step").forEach(el => observer.observe(el));
+  goTo(0);
+}
+</script>
+</body>
+</html>
