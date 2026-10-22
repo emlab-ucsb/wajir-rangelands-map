@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photos from Wajir</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,400;6..12,600&display=swap" rel="stylesheet">
+<style>
+  /* Colors taken from the emLab site */
+  :root {
+    --navy:   #003660;
+    --text:   #3d4952;
+    --soft:   #6b7780;
+    --line:   #d9dfe4;
+    --wash:   #eef0f2;
+    --gap:    14px;
+    --slide-w: min(86%, calc((100vh - 96px) * 1.333));
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: transparent; }
+  body {
+    font-family: "Nunito Sans", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    padding: 4px 2px 8px;
+  }
+
+  /* ---- The strip of photos ---- */
+  .track {
+    position: relative;
+    display: flex; gap: var(--gap);
+    overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    border-radius: 6px;
+  }
+  .track::-webkit-scrollbar { display: none; }
+  .track:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
+  /* spacer so the last photo can snap to the left edge */
+  .track::after { content: ""; flex: 0 0 calc(100% - var(--slide-w) - var(--gap)); }
+
+  .slide {
+    flex: 0 0 var(--slide-w);
+    margin: 0;
+    scroll-snap-align: start;
+    cursor: pointer;
+  }
+  .slide img {
+    display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
+    border-radius: 6px; background: var(--wash);
+    opacity: .45; transform: scale(.965); transform-origin: left center;
+    transition: opacity .45s ease, transform .45s cubic-bezier(.2, .8, .2, 1);
+  }
+  .slide.is-active { cursor: default; }
+  .slide.is-active img { opacity: 1; transform: none; }
+
+  /* ---- Progress segments ---- */
+  .progress { display: flex; gap: 4px; margin-top: 14px; width: var(--slide-w); }
+  .progress button {
+    flex: 1; height: 18px; padding: 0; border: 0; background: none; cursor: pointer;
+    display: flex; align-items: center;
+  }
+  .progress button::before {
+    content: ""; display: block; width: 100%; height: 3px; border-radius: 2px;
+    background: var(--line); transition: background .3s ease;
+  }
+  .progress button[aria-current="true"]::before { background: var(--navy); }
+  .progress button:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; border-radius: 2px; }
+
+  /* ---- Caption + arrows ---- */
+  .bar {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+    width: var(--slide-w); margin-top: 6px;
+  }
+  .caption { margin: 0; font-size: 15px; line-height: 1.5; min-height: 1.5em; }
+  .caption .credit { color: var(--soft); font-size: 13px; margin-left: 6px; }
+  .arrows { display: flex; gap: 8px; flex-shrink: 0; }
+  .arrows button {
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 1px solid var(--line); background: #fff; color: var(--navy);
+    display: grid; place-items: center; padding: 0; cursor: pointer;
+    transition: background .2s ease, opacity .2s ease;
+  }
+  .arrows button:hover:not(:disabled) { background: var(--wash); }
+  .arrows button:disabled { opacity: .35; cursor: default; }
+  .arrows button:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+  .arrows svg { width: 18px; height: 18px; }
+  .arrows button[hidden] { display: none; }
+
+  @media (max-width: 480px) {
+    :root { --slide-w: 88%; --gap: 10px; }
+    .caption { font-size: 14px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .slide img { transition: opacity .2s ease; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div role="region" aria-roledescription="carousel" aria-label="Photo gallery">
+  <div class="track" id="track" tabindex="0" aria-label="Photos — use arrow keys to move"></div>
+  <div class="progress" id="progress"></div>
+  <div class="bar">
+    <p class="caption" id="caption" aria-live="polite"></p>
+    <div class="arrows">
+      <button id="prev" aria-label="Previous photo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <button id="next" aria-label="Next photo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button id="pause" aria-label="Pause slideshow" hidden>
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   YOUR PHOTOS — edit this list.
+   src:     image file in the images folder (or a full URL)
+   alt:     short description for screen readers
+   caption: text shown under the photo
+   credit:  optional photo credit (use "" for none)
+   ========================================================= */
+const PHOTOS = [
+  { src: "images/herder-kenya.jpg",     alt: "Herder in Kenya",         caption: "A herder in Kenya",          credit: "" },
+  { src: "images/heather-maps.jpg",     alt: "Heather looking at maps", caption: "Heather reviewing maps",     credit: "" },
+  { src: "images/camels-watering.jpg",  alt: "Camels drinking water",   caption: "Camels at a watering point", credit: "" },
+  { src: "images/team.jpg",             alt: "Team photo",              caption: "The team",                   credit: "" }
+];
+
+/* Autoplay: seconds per photo. Change the 5 here, or override from the
+   iframe URL with ?autoplay=8 (or ?autoplay=0 to turn it off) */
+const urlAuto  = new URLSearchParams(location.search).get("autoplay");
+const AUTOPLAY = Math.max(0, urlAuto !== null ? (parseFloat(urlAuto) || 0) : 5);
+const reduced  = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const track    = document.getElementById("track");
+const progress = document.getElementById("progress");
+const caption  = document.getElementById("caption");
+const prevBtn  = document.getElementById("prev");
+const nextBtn  = document.getElementById("next");
+const n = PHOTOS.length;
+
+const slides = PHOTOS.map((p, i) => {
+  const fig = document.createElement("figure");
+  fig.className = "slide";
+  fig.setAttribute("aria-roledescription", "slide");
+  fig.setAttribute("aria-label", `${i + 1} of ${n}`);
+  const img = document.createElement("img");
+  img.src = p.src; img.alt = p.alt || ""; img.draggable = false;
+  img.loading = i < 2 ? "eager" : "lazy";
+  fig.append(img);
+  fig.addEventListener("click", () => goTo(i));
+  track.append(fig);
+  return fig;
+});
+
+const segs = PHOTOS.map((_, i) => {
+  const b = document.createElement("button");
+  b.setAttribute("aria-label", `Go to photo ${i + 1}`);
+  b.addEventListener("click", () => goTo(i));
+  progress.append(b);
+  return b;
+});
+
+let current = -1;
+
+function setActive(i) {
+  if (i === current) return;
+  current = i;
+  slides.forEach((s, k) => s.classList.toggle("is-active", k === i));
+  segs.forEach((b, k) => b.setAttribute("aria-current", k === i ? "true" : "false"));
+  const p = PHOTOS[i];
+  caption.textContent = p.caption || "";
+  if (p.credit) {
+    const c = document.createElement("span");
+    c.className = "credit"; c.textContent = p.credit;
+    caption.append(c);
+  }
+  prevBtn.disabled = i === 0;
+  nextBtn.disabled = i === n - 1 && !AUTOPLAY;
+}
+
+function goTo(i) {
+  i = (i + n) % n;
+  track.scrollTo({ left: slides[i].offsetLeft, behavior: reduced ? "auto" : "smooth" });
+  setActive(i);
+}
+
+/* Work out which photo is in front as the person scrolls or swipes */
+let ticking = false;
+track.addEventListener("scroll", () => {
+  if (ticking) return;
+  ticking = true;
+  requestAnimationFrame(() => {
+    const step = n > 1 ? slides[1].offsetLeft - slides[0].offsetLeft : 1;
+    setActive(Math.min(n - 1, Math.max(0, Math.round(track.scrollLeft / step))));
+    ticking = false;
+  });
+}, { passive: true });
+
+prevBtn.addEventListener("click", () => { goTo(current - 1); restartAuto(); });
+nextBtn.addEventListener("click", () => { goTo(current + 1); restartAuto(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") { e.preventDefault(); if (current < n - 1 || AUTOPLAY) goTo(current + 1); restartAuto(); }
+  if (e.key === "ArrowLeft")  { e.preventDefault(); if (current > 0) goTo(current - 1); restartAuto(); }
+});
+
+/* Desktop: drag with the mouse to flip through */
+let down = false, startX = 0, startScroll = 0, moved = false;
+track.addEventListener("pointerdown", e => {
+  if (e.pointerType !== "mouse") return;
+  down = true; moved = false; startX = e.clientX; startScroll = track.scrollLeft;
+  track.style.scrollSnapType = "none";
+});
+window.addEventListener("pointermove", e => {
+  if (!down) return;
+  const dx = e.clientX - startX;
+  if (Math.abs(dx) > 4) moved = true;
+  track.scrollLeft = startScroll - dx;
+});
+window.addEventListener("pointerup", e => {
+  if (!down) return;
+  down = false;
+  const dx = e.clientX - startX;
+  track.style.scrollSnapType = "";
+  if (moved) goTo(dx < -40 ? Math.min(current + 1, n - 1) : dx > 40 ? Math.max(current - 1, 0) : current);
+});
+track.addEventListener("click", e => { if (moved) { e.stopPropagation(); moved = false; } }, true);
+
+/* Autoplay — pauses while the pointer is over the photos, or with the pause button */
+let timer = null, paused = false;
+const pauseBtn   = document.getElementById("pause");
+const PAUSE_ICON = pauseBtn.innerHTML;
+const PLAY_ICON  = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
+function startAuto()   { if (!AUTOPLAY || paused) return; clearInterval(timer); timer = setInterval(() => goTo(current + 1), AUTOPLAY * 1000); }
+function restartAuto() { if (AUTOPLAY) startAuto(); }
+if (AUTOPLAY) {
+  pauseBtn.hidden = false;
+  pauseBtn.addEventListener("click", () => {
+    paused = !paused;
+    pauseBtn.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
+    pauseBtn.setAttribute("aria-label", paused ? "Play slideshow" : "Pause slideshow");
+    paused ? clearInterval(timer) : startAuto();
+  });
+  track.addEventListener("mouseenter", () => clearInterval(timer));
+  track.addEventListener("mouseleave", startAuto);
+  if (!reduced) startAuto(); else { paused = true; pauseBtn.innerHTML = PLAY_ICON; pauseBtn.setAttribute("aria-label", "Play slideshow"); }
+}
+
+setActive(0);
+</script>
+</body>
+</html>
