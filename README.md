@@ -47,10 +47,11 @@ Readers scroll inside the map box itself. A height of 600–800 px works well.
 <iframe src="https://emlab-ucsb.github.io/wajir-rangelands-map/gallery/photo-gallery.html"
         title="Photos from Wajir"
         width="100%" height="540"
-        style="border:0; display:block;" loading="lazy"></iframe>
+        style="border:0; display:block; height:min(540px, calc(66vw + 70px));"
+        loading="lazy" allowfullscreen></iframe>
 ```
 
-Lower the height if there's empty space under the gallery, and raise it if the arrows are cut off. The gallery advances every 5 seconds. To change the speed, add `?autoplay=8` to the end of the `src` link (for 8 seconds), or use `?autoplay=0` to turn autoplay off.
+The `height:min(...)` part shrinks the box on phones so there's no empty space under the gallery; on larger screens it stays 540 px. `allowfullscreen` lets readers click a photo to see it full screen. (iPhones don't allow full screen from an embed, so there the photo opens in a new tab instead.) The gallery advances every 5 seconds. To change the speed, add `?autoplay=8` to the end of the `src` link (for 8 seconds), or use `?autoplay=0` to turn autoplay off.
 
 If an iframe disappears after saving, switch the text format to **Full HTML**, or ask a site admin to allow `<iframe>` in the usual format.
 
@@ -85,6 +86,8 @@ The photos are listed in `PHOTOS`, near the top of the `<script>` in `gallery/ph
 - **`credit`:** an optional photographer credit, shown in lighter text after the caption. Leave it as `""` for none.
 
 To add a photo, upload it to `gallery/images/` and add a line to `PHOTOS`. Resize photos to about 1,600 px wide before uploading so the gallery loads quickly.
+
+Keep captions short (under about 40 characters, including the credit) so they fit on one or two lines on phones.
 
 To change the default autoplay speed, edit the `5` in the line that sets `AUTOPLAY`. Colors are variables at the top of the `<style>` block, taken from the emLab site.
 
