@@ -18,7 +18,7 @@ Pages is free for public repositories. A private repository needs a paid GitHub 
 Paste this into the blog body, replacing the URL with the live Pages address:
 
 ```html
-<iframe src="https://<org-name>.github.io/<repo-name>/"
+<iframe src="https://emlab-ucsb.github.io/wajir-rangelands-map/"
         title="Interactive map: from Kenya's national parks to Wajir County and the migration of herds"
         width="100%" height="700"
         style="border:0;" loading="lazy"></iframe>
