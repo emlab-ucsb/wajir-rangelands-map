@@ -11,6 +11,7 @@ Each piece is plain HTML with no build step.
 index.html              the scrolling map
 gallery/
   photo-gallery.html    the photo gallery
+  drupal-embed-code.txt the code to paste into the blog post
   images/               the gallery's photos
 README.md
 ```
@@ -43,15 +44,11 @@ Readers scroll inside the map box itself. A height of 600–800 px works well.
 
 **Photo gallery**
 
-```html
-<iframe src="https://emlab-ucsb.github.io/wajir-rangelands-map/gallery/photo-gallery.html"
-        title="Photos from Wajir"
-        width="100%" height="540"
-        style="border:0; display:block; height:min(540px, calc(66vw + 70px));"
-        loading="lazy" allowfullscreen></iframe>
-```
+Paste the full contents of `gallery/drupal-embed-code.txt`: the iframe followed by a short `<script>`. The script lets readers click a photo to see it enlarged over the blog page itself, on every device. It only responds to galleries hosted at `emlab-ucsb.github.io`.
 
-The `height:min(...)` part shrinks the box on phones so there's no empty space under the gallery; on larger screens it stays 540 px. `allowfullscreen` lets readers click a photo to see it full screen. (iPhones don't allow full screen from an embed, so there the photo opens in a new tab instead.) The gallery advances every 5 seconds. To change the speed, add `?autoplay=8` to the end of the `src` link (for 8 seconds), or use `?autoplay=0` to turn autoplay off.
+If Drupal strips the `<script>` when you save, the gallery still works: clicked photos open full screen on desktop, and fill the gallery box on iPhones.
+
+The `height:min(...)` part of the iframe shrinks the box on phones so there's no empty space under the gallery; on larger screens it stays 540 px. The gallery advances every 5 seconds. To change the speed, add `?autoplay=8` to the end of the `src` link (for 8 seconds), or use `?autoplay=0` to turn autoplay off.
 
 If an iframe disappears after saving, switch the text format to **Full HTML**, or ask a site admin to allow `<iframe>` in the usual format.
 
