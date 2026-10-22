@@ -126,6 +126,18 @@
   .viewer button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   .viewer svg { width: 20px; height: 20px; }
   .v-close { top: 12px; right: 12px; }
+  /* Fallback when full screen isn't available: fill the gallery box */
+  .viewer.inline { padding: 0; gap: 0; background: #000; }
+  .viewer.inline img { max-height: 100%; border-radius: 0; }
+  .viewer.inline .viewer-cap {
+    position: absolute; left: 0; right: 0; bottom: 0; max-width: none;
+    padding: 28px 12px 10px; font-size: 14px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, .75));
+  }
+  .viewer.inline button { width: 36px; height: 36px; background: rgba(0, 0, 0, .45); }
+  .viewer.inline .v-close { top: 8px; right: 8px; }
+  .viewer.inline .v-prev { left: 8px; }
+  .viewer.inline .v-next { right: 8px; }
   .v-prev  { left: 12px;  top: 50%; transform: translateY(-50%); }
   .v-next  { right: 12px; top: 50%; transform: translateY(-50%); }
 
@@ -325,8 +337,21 @@ if (AUTOPLAY) {
 }
 
 /* ---- Click a photo to see it larger ----
-   Opens full screen where the browser allows it. On iPhones, which
-   don't allow full screen from an embed, the photo opens in a new tab. */
+   1. If the blog page has the emLab lightbox script, the photo opens
+      over the whole blog page (works on every device, including iPhones).
+   2. Otherwise it opens full screen where the browser allows it.
+   3. Otherwise (iPhones without the script) it fills the gallery box. */
+let pageLightbox = false;
+if (window.parent !== window) {
+  window.parent.postMessage({ type: "emlab-gallery-hello" }, "*");
+  window.addEventListener("message", e => {
+    if (e.source !== window.parent || !e.data) return;
+    const t = e.data.type;
+    if (t === "emlab-lightbox-ready") pageLightbox = true;
+    if (t === "emlab-gallery-goto" && Number.isInteger(e.data.index)) goTo(e.data.index);
+    if (t === "emlab-gallery-closed") { viewing = false; startAuto(); }
+  });
+}
 const viewer = document.getElementById("viewer");
 const vImg   = document.getElementById("vImg");
 const vCap   = document.getElementById("vCap");
@@ -346,13 +371,26 @@ function fillViewer(i) {
 }
 
 function openViewer(i) {
-  if (!canFullscreen) { window.open(slides[i].querySelector("img").src, "_blank", "noopener"); return; }
   viewing = true;
   clearInterval(timer);
+  if (pageLightbox) {
+    window.parent.postMessage({
+      type: "emlab-gallery-open", index: i,
+      photos: PHOTOS.map((p, k) => ({
+        src: slides[k].querySelector("img").src,
+        alt: p.alt || "", caption: p.caption || "", credit: p.credit || ""
+      }))
+    }, "*");
+    return;
+  }
   fillViewer(i);
   viewer.hidden = false;
-  const req = viewer.requestFullscreen || viewer.webkitRequestFullscreen;
-  try { const r = req.call(viewer); if (r && r.catch) r.catch(() => {}); } catch (err) {}
+  if (canFullscreen) {
+    const req = viewer.requestFullscreen || viewer.webkitRequestFullscreen;
+    try { const r = req.call(viewer); if (r && r.catch) r.catch(() => viewer.classList.add("inline")); } catch (err) { viewer.classList.add("inline"); }
+  } else {
+    viewer.classList.add("inline");
+  }
   vClose.focus();
 }
 
@@ -360,6 +398,7 @@ function closeViewer() {
   if (!viewing) return;
   viewing = false;
   viewer.hidden = true;
+  viewer.classList.remove("inline");
   if (document.fullscreenElement || document.webkitFullscreenElement) {
     (document.exitFullscreen || document.webkitExitFullscreen).call(document);
   }
